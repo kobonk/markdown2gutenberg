@@ -16,10 +16,11 @@ def is_preformatted(line):
 def convert_to_header(line):
     level = len(re.findall(r'#', line))
     text = re.sub(r'^#{1,6} |\n$', '', line)
+    heading = '{"level":' + str(level) + '} ' if level > 2 else ''
 
-    return '<!-- wp:header -->\n' \
+    return '<!-- wp:heading {heading}-->\n' \
         '<h{level}>{text}</h{level}>\n' \
-        '<!-- /wp:header -->\n'.format(level=level, text=text)
+        '<!-- /wp:heading -->\n'.format(level=level, text=text, heading=heading)
 
 def convert_inline_code(line):
     return re.sub(r'`(\S+)`', r'<code>\g<1></code>', line)
@@ -46,15 +47,13 @@ def convert_to_preformatted(line):
 
 def get_preformatted_beginning(code=False):
     return '<!-- wp:{preformatted} -->\n' \
-        '<pre>{code}\n'.format(
-            code='<code>' if code else '',
+        '<pre class="wp-block-{preformatted}">\n'.format(
             preformatted='code' if code else 'preformatted'
         )
 
 def get_preformatted_end(code=False):
-    return '{code}</pre>\n' \
+    return '</pre>\n' \
         '<!-- /wp:{preformatted} -->\n'.format(
-            code='</code>' if code else '',
             preformatted='code' if code else 'preformatted'
         )
 
@@ -76,12 +75,12 @@ def main(argv):
                 output_lines.append(convert_to_header(line))
             elif is_preformatted(line):
                 if is_blank(previous_line) or is_header(previous_line):
-                    output_lines.append(get_preformatted_beginning(True))
+                    output_lines.append(get_preformatted_beginning(False))
                     output_lines.append(convert_to_preformatted(line))
                 else:
                     output_lines.append(convert_to_preformatted(line))
             elif is_blank(line) and is_preformatted(previous_line):
-                output_lines.append(get_preformatted_end(True))
+                output_lines.append(get_preformatted_end(False))
             elif is_blank(previous_line) or is_header(previous_line) and not is_blank(line):
                 output_lines.append(convert_to_paragraph(line))
             # else:
