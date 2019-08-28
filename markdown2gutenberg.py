@@ -26,7 +26,7 @@ def convert_to_header(line):
         '<!-- /wp:heading -->\n'.format(level=level, text=text, heading=heading)
 
 def convert_inline_code(line):
-    return re.sub(r'`(\S+)`', r'<code>\g<1></code>', line)
+    return re.sub(r'`(\S* *\S*)`', r'<code>\g<1></code>', line)
 
 def convert_inline_italic(line):
     return re.sub(r'[_\*]{1}(\w*\s?\w*)[_\*]{1}', r'<em>\g<1></em>', line)
