@@ -13,6 +13,9 @@ def is_blank(line):
 def is_preformatted(line):
     return re.compile(r'^\t| {4}').search(line) is not None
 
+def is_list_item(line):
+    return re.compile(r'^- ').search(line) is not None
+
 def convert_to_header(line):
     level = len(re.findall(r'#', line))
     text = re.sub(r'^#{1,6} |\n$', '', line)
@@ -41,6 +44,15 @@ def convert_to_paragraph(line):
             )
         )
     )
+
+def convert_to_list_item(line):
+    return re.sub(r'^- (.*)', r'<li>\g<1></li>', line)
+
+def get_list_beginning():
+    return '<!-- wp:list -->\n<ul>\n';
+
+def get_list_end():
+    return '</ul>\n<!-- /wp:list -->\n'
 
 def convert_to_preformatted(line):
     return re.sub(r'^\t| {4}', '', line, 1)
@@ -76,15 +88,22 @@ def main(argv):
             elif is_preformatted(line):
                 if is_blank(previous_line) or is_header(previous_line):
                     output_lines.append(get_preformatted_beginning(False))
-                    output_lines.append(convert_to_preformatted(line))
-                else:
-                    output_lines.append(convert_to_preformatted(line))
-            elif is_blank(line) and is_preformatted(previous_line):
-                output_lines.append(get_preformatted_end(False))
-            elif is_blank(previous_line) or is_header(previous_line) and not is_blank(line):
-                output_lines.append(convert_to_paragraph(line))
-            # else:
-            #     print(line)
+
+                output_lines.append(convert_to_preformatted(line))
+            elif is_list_item(line):
+                if not is_list_item(previous_line):
+                    output_lines.append(get_list_beginning())
+
+                output_lines.append(convert_to_list_item(line))
+            else:
+                if is_list_item(previous_line):
+                    output_lines.append(get_list_end())
+
+                if is_preformatted(previous_line):
+                    output_lines.append(get_preformatted_end(False))
+
+                if not is_blank(line):
+                    output_lines.append(convert_to_paragraph(line))
 
             previous_line = line
 
