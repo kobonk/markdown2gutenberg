@@ -1,5 +1,13 @@
 import sys
 import re
+from enum import Enum
+
+class Mode(Enum):
+    PARAGRAPH = 1
+    ORDERED_LIST = 2
+    PREFORMATTED = 3
+    LIST = 4
+    HEADING = 5
 
 def create_output_filename(input_filename):
     return re.sub(r'\..*$', '.gutenberg.html', input_filename)
@@ -14,7 +22,10 @@ def is_preformatted(line):
     return re.compile(r'^\t| {4}').search(line) is not None
 
 def is_list_item(line):
-    return re.compile(r'^- ').search(line) is not None
+    return re.compile(r'^(-|\d+\.) ').search(line) is not None
+
+def get_list_mode(line):
+    return Mode.LIST if re.compile(r'^- ').search(line) else Mode.ORDERED_LIST
 
 def convert_to_header(line):
     level = len(re.findall(r'#', line))
@@ -46,13 +57,18 @@ def convert_to_paragraph(line):
     )
 
 def convert_to_list_item(line):
-    return re.sub(r'^- (.*)', r'<li>\g<1></li>', line)
+    return re.sub(r'^(-|\d+\.) (.*)', r'<li>\g<2></li>', line)
 
-def get_list_beginning():
-    return '<!-- wp:list -->\n<ul>\n';
+def get_list_beginning(ordered=False):
+    return '<!-- wp:list {description}-->\n<{type}>\n'.format(
+        description = r'{"ordered":true} ' if ordered else '',
+        type = 'ol' if ordered else 'ul'
+    )
 
-def get_list_end():
-    return '</ul>\n<!-- /wp:list -->\n'
+def get_list_end(ordered=False):
+    return '</{type}>\n<!-- /wp:list -->\n'.format(
+        type = 'ol' if ordered else 'ul'
+    )
 
 def convert_to_preformatted(line):
     return re.sub(r'^\t| {4}', '', line, 1)
@@ -79,6 +95,8 @@ def main(argv):
 
     output_lines = []
 
+    mode_stack = []
+
     with open(input_filename, 'r') as file:
         previous_line = None
 
@@ -92,13 +110,20 @@ def main(argv):
                 output_lines.append(convert_to_preformatted(line))
             elif is_list_item(line):
                 if not is_list_item(previous_line):
-                    output_lines.append(get_list_beginning())
+                    mode = get_list_mode(line)
+                    mode_stack.append(mode)
+                    output_lines.append(get_list_beginning(mode is Mode.ORDERED_LIST))
 
                 output_lines.append(convert_to_list_item(line))
-            else:
-                if is_list_item(previous_line):
+            elif len(mode_stack) > 0:
+                if mode_stack[-1] is Mode.ORDERED_LIST:
+                    output_lines.append(get_list_end(True))
+
+                if mode_stack[-1] is Mode.LIST:
                     output_lines.append(get_list_end())
 
+                mode_stack.pop()
+            else:
                 if is_preformatted(previous_line):
                     output_lines.append(get_preformatted_end(False))
 
