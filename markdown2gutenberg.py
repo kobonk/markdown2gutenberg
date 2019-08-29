@@ -92,10 +92,19 @@ def main(argv):
         previous_line = None
 
         for line in file.readlines():
+            if get_last(mode_stack) is Mode.PREFORMATTED:
+                if not is_blank(line) and not is_preformatted(line):
+                    if is_blank(output_lines[-1]):
+                        output_lines.pop()
+
+                    output_lines.append(get_preformatted_end(False))
+                    mode_stack.pop()
+
             if is_header(line):
                 output_lines.append(convert_to_header(line))
+
             elif is_preformatted(line):
-                if is_blank(previous_line) or is_header(previous_line):
+                if get_last(mode_stack) is not Mode.PREFORMATTED:
                     mode_stack.append(Mode.PREFORMATTED)
                     output_lines.append(get_preformatted_beginning(False))
 
@@ -115,13 +124,11 @@ def main(argv):
                 output_lines.append(get_list_end())
                 mode_stack.pop()
 
-            elif get_last(mode_stack) is Mode.PREFORMATTED:
-                output_lines.append(get_preformatted_end(False))
-                mode_stack.pop()
+            elif not is_blank(line):
+                output_lines.append(convert_to_paragraph(line))
 
-            else:
-                if not is_blank(line):
-                    output_lines.append(convert_to_paragraph(line))
+            elif get_last(mode_stack) is Mode.PREFORMATTED:
+                output_lines.append(line)
 
             previous_line = line
 
