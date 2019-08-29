@@ -45,8 +45,13 @@ def convert_to_paragraph(line):
     return '<!-- wp:paragraph -->\n' \
         '<p>{line}</p>\n' \
         '<!-- /wp:paragraph -->\n'.format(
-        line=parse_line(re.sub(r'\n$', '', line))
+        line=parse_links(parse_line(re.sub(r'\n$', '', line)))
     )
+
+def parse_links(line):
+    pattern = re.compile(r'\[+(.*)\]+\(+(\S+)\s?\"?(.*?)\"?\)+')
+
+    return pattern.sub(r'<a href="\g<2>" title="\g<3>">\g<1></a>', line)
 
 def convert_to_list_item(line):
     return parse_line(re.sub(r'^(-|\d+\.) (.*)', r'<li>\g<2></li>', line))
@@ -144,6 +149,9 @@ def parse_line(line):
     tag_stack = []
     line_stack = []
     previous_char = None
+    link_url = []
+    link_text = []
+    link_alt = []
 
     for char in line:
         if char == '`':
