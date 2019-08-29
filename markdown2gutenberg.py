@@ -9,6 +9,11 @@ class Mode(Enum):
     LIST = 4
     HEADING = 5
 
+class Tag(Enum):
+    CODE = 1
+    EM = 2
+    STRONG = 3
+
 def create_output_filename(input_filename):
     return re.sub(r'\..*$', '.gutenberg.html', input_filename)
 
@@ -29,35 +34,22 @@ def get_list_mode(line):
 
 def convert_to_header(line):
     level = len(re.findall(r'#', line))
-    text = re.sub(r'^#{1,6} |\n$', '', line)
+    text = parse_line(re.sub(r'^#{1,6} |\n$', '', line))
     heading = '{"level":' + str(level) + '} ' if level > 2 else ''
 
     return '<!-- wp:heading {heading}-->\n' \
         '<h{level}>{text}</h{level}>\n' \
         '<!-- /wp:heading -->\n'.format(level=level, text=text, heading=heading)
 
-def convert_inline_code(line):
-    return re.sub(r'`(\S* *\S*)`', r'<code>\g<1></code>', line)
-
-def convert_inline_italic(line):
-    return re.sub(r'[_\*]{1}(\b.*\b)[_\*]{1}', r'<em>\g<1></em>', line)
-
-def convert_inline_strong(line):
-    return re.sub(r'\*{2}(\b.*\b)\*{2}', r'<strong>\g<1></strong>', line)
-
 def convert_to_paragraph(line):
     return '<!-- wp:paragraph -->\n' \
         '<p>{line}</p>\n' \
         '<!-- /wp:paragraph -->\n'.format(
-        line=convert_inline_code(
-            convert_inline_italic(
-                convert_inline_strong(re.sub(r'\n$', '', line))
-            )
-        )
+        line=parse_line(re.sub(r'\n$', '', line))
     )
 
 def convert_to_list_item(line):
-    return re.sub(r'^(-|\d+\.) (.*)', r'<li>\g<2></li>', line)
+    return parse_line(re.sub(r'^(-|\d+\.) (.*)', r'<li>\g<2></li>', line))
 
 def get_list_beginning(ordered=False):
     return '<!-- wp:list {description}-->\n<{type}>\n'.format(
@@ -94,7 +86,6 @@ def main(argv):
     output_filename = argv[1] if len(argv) > 1 else create_output_filename(argv[0])
 
     output_lines = []
-
     mode_stack = []
 
     with open(input_filename, 'r') as file:
@@ -105,6 +96,7 @@ def main(argv):
                 output_lines.append(convert_to_header(line))
             elif is_preformatted(line):
                 if is_blank(previous_line) or is_header(previous_line):
+                    mode_stack.append(Mode.PREFORMATTED)
                     output_lines.append(get_preformatted_beginning(False))
 
                 output_lines.append(convert_to_preformatted(line))
@@ -115,18 +107,19 @@ def main(argv):
                     output_lines.append(get_list_beginning(mode is Mode.ORDERED_LIST))
 
                 output_lines.append(convert_to_list_item(line))
-            elif len(mode_stack) > 0:
-                if mode_stack[-1] is Mode.ORDERED_LIST:
-                    output_lines.append(get_list_end(True))
-
-                if mode_stack[-1] is Mode.LIST:
-                    output_lines.append(get_list_end())
-
+            elif get_last(mode_stack) is Mode.ORDERED_LIST:
+                output_lines.append(get_list_end(True))
                 mode_stack.pop()
-            else:
-                if is_preformatted(previous_line):
-                    output_lines.append(get_preformatted_end(False))
 
+            elif get_last(mode_stack) is Mode.LIST:
+                output_lines.append(get_list_end())
+                mode_stack.pop()
+
+            elif get_last(mode_stack) is Mode.PREFORMATTED:
+                output_lines.append(get_preformatted_end(False))
+                mode_stack.pop()
+
+            else:
                 if not is_blank(line):
                     output_lines.append(convert_to_paragraph(line))
 
@@ -139,6 +132,77 @@ def main(argv):
         file.close()
 
     print(input_filename, output_filename)
+
+def parse_line(line):
+    tag_stack = []
+    line_stack = []
+    previous_char = None
+
+    for char in line:
+        if char == '`':
+            if get_last(tag_stack) is Tag.CODE:
+                # End of CODE
+                line_stack.append('</code>')
+                tag_stack.pop()
+            else:
+                # Start of CODE
+                line_stack.append('<code>')
+                tag_stack.append(Tag.CODE)
+
+        elif get_last(tag_stack) is Tag.CODE:
+            line_stack.append(char)
+
+        elif char == '*' and previous_char == '*':
+            if is_tag_type(line_stack[-1], Tag.EM):
+                if get_last(tag_stack) is Tag.EM:
+                    tag_stack.pop()
+
+                line_stack.pop()
+
+            if get_last(tag_stack) is Tag.STRONG:
+                # End of STRONG
+                line_stack.append('</strong>')
+                tag_stack.pop()
+            else:
+                # Start of STRONG
+                line_stack.append('<strong>')
+                tag_stack.append(Tag.STRONG)
+
+        elif char == '*':
+            if get_last(tag_stack) is Tag.EM:
+                # End of EM
+                line_stack.append('</em>')
+                tag_stack.pop()
+            else:
+                # Start of EM
+                line_stack.append('<em>')
+                tag_stack.append(Tag.EM)
+
+        else:
+            line_stack.append(char)
+
+        previous_char = char
+
+    return ''.join(line_stack)
+
+def is_tag_type(string, tag_type):
+    return re.compile(get_tag_pattern(tag_type)).search(string) is not None
+
+def get_tag_pattern(tag_type):
+    if tag_type == Tag.STRONG:
+        return r'^</?strong>$'
+
+    if tag_type == Tag.EM:
+        return r'^</?em>$'
+
+    if tag_type == Tag.CODE:
+        return r'^</?code>'
+
+def get_last(array):
+    if len(array) > 0:
+        return array[-1]
+
+    return None
 
 if __name__ == '__main__':
     main(sys.argv[1:])
